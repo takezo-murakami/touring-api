@@ -11,7 +11,7 @@ export type Parking = (typeof PARKING)[number];
 
 export const SLIDER_HOURS = [0.5, 1, 2, 3, 4, 6, 8] as const;
 
-export const AVERAGE_SPEED_KMH = 50;
+export const AVERAGE_SPEED_KMH = 30;
 export const DISPLAY_LIMIT = 120;
 
 export type LatLng = {

@@ -1,5 +1,6 @@
 import type { AuthUser } from './auth.js';
 import {
+  AVERAGE_SPEED_KMH,
   parseCreatePost,
   parseNearby,
   parseRideAction,
@@ -72,6 +73,7 @@ async function nearby(request: ApiRequest, store: AppStore): Promise<ApiResult> 
   return {
     status: 200,
     body: {
+      averageSpeedKmh: AVERAGE_SPEED_KMH,
       locations: selectLocations({
         origin: query.origin,
         radiusKm: query.radiusKm,

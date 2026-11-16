@@ -11,7 +11,7 @@ test('geohash matches the known vector', () => {
 });
 
 test('a short radius stays on the geohash index and a long one scans', () => {
-  expect(radiusKmFor('1')).toBe(50);
+  expect(radiusKmFor('1')).toBe(30);
   expect(radiusKmFor('all')).toBeNull();
   expect(searchPrefixes(35.68, 139.76, 50)?.length).toBeGreaterThan(0);
   expect(searchPrefixes(35.68, 139.76, 400)).toBeNull();
@@ -44,6 +44,41 @@ test('nearby keeps places inside the radius, genre, and keyword', () => {
     posts,
   });
   expect(selected.map((item) => item.id)).toEqual(['food']);
+});
+
+test('nearby returns the speed used to cut the radius', async () => {
+  const result = await handle({
+    method: 'GET',
+    path: '/locations/nearby',
+    query: new URLSearchParams({ lat: '35.68', lng: '139.76', hours: '1' }),
+    body: undefined,
+    user: null,
+  }, {
+    ...unusedStore(),
+    listCandidates: async () => [place('near', '港の丘', 35.681, 139.767, ['景色'])],
+  });
+
+  expect(result.status).toBe(200);
+  const body = result.body as { averageSpeedKmh: number; locations: Array<Record<string, unknown>> };
+  expect(body.averageSpeedKmh).toBe(30);
+  expect(body.locations[0]).not.toHaveProperty('averageSpeedKmh');
+  expect(body.locations[0].distanceKm).toEqual(expect.any(Number));
+});
+
+test('nearby tells the client which speed drew the radius', async () => {
+  const result = await handle({
+    method: 'GET',
+    path: '/locations/nearby',
+    query: new URLSearchParams({ lat: '35.68', lng: '139.76', hours: '1' }),
+    body: undefined,
+    user: null,
+  }, {
+    ...unusedStore(),
+    listCandidates: async () => [place('near', '丘', 35.681, 139.767, ['景色'])],
+    postsFor: async () => [],
+  });
+  expect(result.status).toBe(200);
+  expect(result.body).toMatchObject({ averageSpeedKmh: 30 });
 });
 
 test('missing hours is rejected before the store is called', async () => {
