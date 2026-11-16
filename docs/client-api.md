@@ -1,0 +1,324 @@
+# クライアント向け API
+
+Phase1 のモバイルアプリがクラウドへ接続するための契約です。場所の取得、投稿、気になる場所、到着記録はここを呼びます。登録とログインは API ではなく Cognito に直接話します。
+
+API Gateway と Lambda にはまだ載せていません。開発中は、このリポジトリで `npm run dev` したプロセスが API です。
+
+## 接続先
+
+| 項目 | 値 |
+| --- | --- |
+| ベース URL | `http://127.0.0.1:3000` |
+| リージョン | `ap-northeast-1` |
+| User Pool ID | `ap-northeast-1_wDaczsQZI` |
+| App Client ID | `1am2njkk9ldegdmkmv030062dj` |
+| クライアントシークレット | なし |
+
+同じ PC のシミュレータは `127.0.0.1` で届きます。実機は PC の LAN アドレス（例: `http://192.168.1.10:3000`）にして、Windows ファイアウォールでそのポートを許可します。Android エミュレータからホストを見るときは `http://10.0.2.2:3000` です。
+
+CORS は開発用に全オリジンを許可しています。
+
+## 認証
+
+メールアドレスとパスワードで Cognito に自己登録し、メールの確認コードを通します。招待制ではありません。アプリが使う認証フローは `USER_SRP_AUTH` です。`USER_PASSWORD_AUTH` も有効です。
+
+API が読むのは **ID トークン** です。アクセストークンでは通りません。
+
+```http
+Authorization: Bearer <ID トークン>
+Content-Type: application/json
+```
+
+ユーザー ID はトークンの `sub` です。メールアドレスは API のユーザー情報へコピーしません。
+
+パスワードは 8 文字以上で、英大文字、英小文字、数字が必要です。記号は必須ではありません。
+
+ヘッダが無い呼び出しは未ログインです。閲覧系はそれで通り、登録系は `401` です。ヘッダがあるのにトークンが無効なときも `401` です。
+
+## 共通
+
+成功時の本文は JSON です。`204` には本文がありません。
+
+失敗時は次の形です。
+
+```json
+{ "message": "ログインが必要です" }
+```
+
+| ステータス | 意味 |
+| --- | --- |
+| 400 | 入力が不正 |
+| 401 | 未ログイン、またはトークンが無効 |
+| 404 | 対象がない |
+| 409 | 状態が操作と合わない |
+| 413 | 本文が 1MB を超えた |
+| 500 | サーバー側の失敗 |
+
+ID は英数字、ハイフン、アンダースコアで 1〜80 文字です。パスに入れるときは `encodeURIComponent` します。走行記録の ID は `2026-11-16T21:56:39.375Z` のような時刻で、`:` を含むためエンコードが必要です。
+
+## 値の一覧
+
+ジャンルは 1 つだけ選びます。未指定なら全ジャンルです。投稿側の `genres` は 1〜3 個で、重複はできません。
+
+| 名前 | 値 |
+| --- | --- |
+| genre | `景色` `食事` `癒し` `走り` `仲間` |
+| price | `無料` `〜1000円` `1000〜2000円` `2000〜5000円` `5000円以上` `わからない` |
+| parking | `専用駐車場あり` `近隣に停めた` `停めにくい` `不明` |
+| hours | `0.5` `1` `2` `3` `4` `6` `8` `all` |
+
+半径は `hours * 50` km です。`all` は距離で切りません。クライアントの `AVERAGE_SPEED_KMH` は 30 のままなので、地図の円と API の結果を揃えるなら 50 に合わせます。表示件数の上限は 120 です。
+
+## エンドポイント
+
+### GET `/locations/nearby`
+
+近くの場所。認証は任意です。
+
+クエリ:
+
+| 名前 | 必須 | 説明 |
+| --- | --- | --- |
+| lat | はい | 現在地の緯度 |
+| lng | はい | 現在地の経度 |
+| hours | はい | スライダーの値。`all` は全国 |
+| genre | いいえ | 1 ジャンル |
+| keyword | いいえ | 100 文字まで。場所名、ジャンル、投稿の要約と本文に部分一致 |
+
+```http
+GET /locations/nearby?lat=35.68&lng=139.76&hours=1&genre=景色&keyword=港
+```
+
+```json
+{
+  "locations": [
+    {
+      "id": "9737cde3-637a-4250-814a-4484efe8e5e5",
+      "name": "動作確認の丘",
+      "latitude": 35.681,
+      "longitude": 139.767,
+      "genres": ["景色"],
+      "price": "無料",
+      "parking": "専用駐車場あり",
+      "postCount": 1,
+      "createdAt": "2026-11-16T21:56:38.985Z",
+      "distanceKm": 0.6
+    }
+  ]
+}
+```
+
+近い順です。`distanceKm` は小数第 1 位です。`featureId` がある場所だけ、その項目が付きます。
+
+### GET `/locations/{id}`
+
+場所の詳細。認証は任意です。無ければ `404`。
+
+```json
+{
+  "location": {
+    "id": "9737cde3-637a-4250-814a-4484efe8e5e5",
+    "name": "動作確認の丘",
+    "latitude": 35.681,
+    "longitude": 139.767,
+    "genres": ["景色"],
+    "price": "無料",
+    "parking": "専用駐車場あり",
+    "postCount": 1,
+    "createdAt": "2026-11-16T21:56:38.985Z"
+  }
+}
+```
+
+### GET `/locations/{id}/posts`
+
+その場所の投稿。認証は任意です。新しい順です。場所が無ければ `404`。
+
+```json
+{
+  "posts": [
+    {
+      "id": "83d87954-152b-47a6-9570-21c1fd83ff1e",
+      "locationId": "9737cde3-637a-4250-814a-4484efe8e5e5",
+      "userId": "cognito-sub",
+      "summary": "港が見える丘",
+      "body": "朝は人が少ない",
+      "photos": [],
+      "photoCount": 0,
+      "createdAt": "2026-11-16T21:56:38.985Z",
+      "updatedAt": "2026-11-16T21:56:38.985Z"
+    }
+  ]
+}
+```
+
+### POST `/posts`
+
+投稿を作る。認証が必要です。場所 ID が無ければ、緯度経度から場所も作ります。
+
+新しい場所:
+
+```json
+{
+  "name": "動作確認の丘",
+  "summary": "港が見える丘",
+  "genres": ["景色"],
+  "price": "無料",
+  "parking": "専用駐車場あり",
+  "latitude": 35.681,
+  "longitude": 139.767,
+  "body": "朝は人が少ない",
+  "photos": []
+}
+```
+
+既存の場所へ足すときは `locationId` を送り、`latitude` と `longitude` は不要です。特集が付いた場所（`featureId` あり）では、ジャンル、価格、駐車は既存の値のままです。
+
+| 項目 | 制約 |
+| --- | --- |
+| summary | 必須。500 文字まで |
+| genres | 必須。1〜3 個 |
+| price | 必須 |
+| parking | 必須 |
+| name | 任意。80 文字まで。空なら `（名称未設定）` |
+| body | 任意。8000 文字まで |
+| photos | 任意。文字列を 5 個まで、各 500 文字まで |
+| latitude, longitude | 新規の場所では必須 |
+
+`201`:
+
+```json
+{
+  "location": { "id": "...", "name": "動作確認の丘", "postCount": 1 },
+  "post": { "id": "...", "locationId": "...", "summary": "港が見える丘" }
+}
+```
+
+場所と投稿の形は、詳細取得と同じです。返った `location.id` を画面遷移に使います。
+
+写真のアップロード API はまだありません。`photos` は文字列を保存するだけです。端末内のファイル URI を入れると、その文字列は残りますが、他の端末からは画像を開けません。
+
+### POST `/locations/{id}/wishlist`
+
+気になる場所へ追加。認証が必要です。本文はありません。場所が無ければ `404`。
+
+`200`:
+
+```json
+{
+  "locationId": "9737cde3-637a-4250-814a-4484efe8e5e5",
+  "savedAt": "2026-11-16T21:56:39.289Z"
+}
+```
+
+すでに入っているときは、最初の `savedAt` をそのまま返します。
+
+### DELETE `/locations/{id}/wishlist`
+
+気になる場所から外す。認証が必要です。`204` で本文はありません。元から無くても `204` です。
+
+### GET `/users/me/wishlist`
+
+自分の気になる場所。認証が必要です。新しい保存が先です。
+
+```json
+{
+  "entries": [
+    {
+      "locationId": "9737cde3-637a-4250-814a-4484efe8e5e5",
+      "savedAt": "2026-11-16T21:56:39.289Z",
+      "location": {
+        "id": "9737cde3-637a-4250-814a-4484efe8e5e5",
+        "name": "動作確認の丘",
+        "latitude": 35.681,
+        "longitude": 139.767,
+        "genres": ["景色"],
+        "price": "無料",
+        "parking": "専用駐車場あり",
+        "postCount": 1,
+        "createdAt": "2026-11-16T21:56:38.985Z"
+      }
+    }
+  ]
+}
+```
+
+場所が消えている項目は `location: null` です。
+
+### POST `/rides`
+
+到着、または未確認を保存する。認証が必要です。既存の場所だけです。緯度、経度、`lat`、`lng` を本文に含めると `400` です。移動中の座標は送りません。
+
+未確認:
+
+```json
+{
+  "locationId": "9737cde3-637a-4250-814a-4484efe8e5e5",
+  "status": "unconfirmed",
+  "clientRideId": "ride-1731800000000"
+}
+```
+
+到着:
+
+```json
+{
+  "locationId": "9737cde3-637a-4250-814a-4484efe8e5e5",
+  "status": "arrived",
+  "detectedAt": "2026-11-16T21:56:39.436Z",
+  "clientRideId": "ride-1731800000000"
+}
+```
+
+`detectedAt` を省略した到着は、サーバーが受け取った時刻を入れます。未確認に `detectedAt` を付けると `400` です。
+
+`clientRideId` は任意で、英数字、ハイフン、アンダースコアの 1〜80 文字です。同じ値でもう一度送ると新しい記録は作らず、既存を `200` で返します。初回は `201` です。
+
+```json
+{
+  "ride": {
+    "id": "2026-11-16T21:56:39.375Z",
+    "locationId": "9737cde3-637a-4250-814a-4484efe8e5e5",
+    "status": "unconfirmed",
+    "detectedAt": null,
+    "createdAt": "2026-11-16T21:56:39.375Z",
+    "visibility": "private"
+  }
+}
+```
+
+案内の開始とジオフェンスは端末のままです。監視が終わった結果だけを送ります。一覧取得は Phase2 です。
+
+### PATCH `/rides/{id}`
+
+未確認を到着にするか、破棄します。認証が必要です。`id` は作成時に返った `ride.id` です。
+
+```json
+{ "action": "arrive" }
+```
+
+```json
+{ "action": "discard" }
+```
+
+`arrive` は `200` で、`status` が `arrived` になった記録を返します。すでに到着なら、そのまま返します。`discard` は未確認だけを消し、`204` です。到着済みの破棄は `409` です。
+
+## いまのアプリからの置き換え
+
+| いまの処理 | API |
+| --- | --- |
+| `listNearby` | `GET /locations/nearby`。スライダーの時間を `hours` で送る |
+| 場所の詳細 | `GET /locations/{id}` |
+| `postsFor` | `GET /locations/{id}/posts` |
+| `createPost` | `POST /posts`。返った `location.id` へ遷移する |
+| `toggleWishlist` の追加 | `POST /locations/{id}/wishlist` |
+| `toggleWishlist` の削除 | `DELETE /locations/{id}/wishlist` |
+| 気になる一覧 | `GET /users/me/wishlist` |
+| ジオフェンスの到着または未確認 | `POST /rides`。端末の監視 ID を `clientRideId` にする |
+| `markArrived` | `PATCH /rides/{id}` の `arrive` |
+| `discardWatch` | `PATCH /rides/{id}` の `discard` |
+| `login` / `logout` | Cognito。API は呼ばない |
+
+`updatePost` と `deletePost` に対応する API は、Phase1 の一覧に無いのでまだありません。特集の取得 API もありません。
+
+ローカルのフィクスチャと `AsyncStorage` は、この API へ切り替えるまでのデータです。

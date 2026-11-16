@@ -3,18 +3,18 @@ import * as cdk from 'aws-cdk-lib/core';
 import { TouringApiStack } from '../lib/touring-api-stack';
 
 const app = new cdk.App();
-new TouringApiStack(app, 'TouringApiStack', {
-  /* If you don't specify 'env', this stack will be environment-agnostic.
-   * Account/Region-dependent features and context lookups will not work,
-   * but a single synthesized template can be deployed anywhere. */
+const stage = app.node.tryGetContext('stage') ?? 'dev';
 
-  /* Uncomment the next line to specialize this stack for the AWS Account
-   * and Region that are implied by the current CLI configuration. */
-  // env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION },
-
-  /* Uncomment the next line if you know exactly what Account and Region you
-   * want to deploy the stack to. */
-  // env: { account: '123456789012', region: 'us-east-1' },
-
-  /* For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html */
+new TouringApiStack(app, `TouringApi-${stage}`, {
+  // This user can create the data stores, but not the IAM roles CDK bootstrap adds.
+  synthesizer: new cdk.LegacyStackSynthesizer(),
+  env: {
+    account: process.env.CDK_DEFAULT_ACCOUNT,
+    region: 'ap-northeast-1',
+  },
+  description: 'Phase1 foundation: Cognito, DynamoDB, and the photo bucket.',
+  tags: {
+    Project: 'touring-app',
+    Stage: String(stage),
+  },
 });
