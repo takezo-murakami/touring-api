@@ -87,6 +87,12 @@ class DynamoStore implements AppStore {
       throw new HttpError(404, '場所が見つかりません');
     }
     const locationId = existing?.id ?? randomUUID();
+    if (existing) {
+      const posts = await this.listPosts(existing.id);
+      if (posts.some((post) => post.userId === userId)) {
+        throw new HttpError(409, 'この場所には、すでにあなたの投稿があります');
+      }
+    }
     const latitude = existing?.latitude ?? input.latitude!;
     const longitude = existing?.longitude ?? input.longitude!;
     const locked = Boolean(existing?.featureId);
@@ -138,6 +144,7 @@ class DynamoStore implements AppStore {
                 },
               },
               { Put: { TableName: config.contentTable, Item: postItem(post), ConditionExpression: 'attribute_not_exists(PK)' } },
+              { Put: { TableName: config.contentTable, Item: authorItem(locationId, userId, postId), ConditionExpression: 'attribute_not_exists(PK)' } },
             ]
           : [
               {
@@ -148,15 +155,100 @@ class DynamoStore implements AppStore {
                 },
               },
               { Put: { TableName: config.contentTable, Item: postItem(post), ConditionExpression: 'attribute_not_exists(PK)' } },
+              { Put: { TableName: config.contentTable, Item: authorItem(locationId, userId, postId), ConditionExpression: 'attribute_not_exists(PK)' } },
             ],
       }));
     } catch (error) {
       if (isCancelled(error)) {
+        if (existing) {
+          const posts = await this.listPosts(existing.id);
+          if (posts.some((post) => post.userId === userId)) {
+            throw new HttpError(409, 'この場所には、すでにあなたの投稿があります');
+          }
+        }
         throw new HttpError(409, '投稿を保存できませんでした');
       }
       throw error;
     }
     return { location, post };
+  }
+
+  async updatePost(userId: string, postId: string, input: CreatePostInput): Promise<{ location: LocationItem; post: PostItem }> {
+    if (!input.locationId) {
+      throw new HttpError(400, 'locationId が必要です');
+    }
+    const location = await this.getLocation(input.locationId);
+    if (!location) {
+      throw new HttpError(404, '場所が見つかりません');
+    }
+    const existing = (await this.listPosts(location.id)).find((post) => post.id === postId && post.userId === userId);
+    if (!existing) {
+      throw new HttpError(404, '投稿が見つかりません');
+    }
+    const now = new Date().toISOString();
+    const post: PostItem = {
+      ...existing,
+      summary: input.summary,
+      body: input.body,
+      photos: input.photos,
+      updatedAt: now,
+    };
+    const locked = Boolean(location.featureId);
+    const nextLocation: LocationItem = locked
+      ? location
+      : {
+          ...location,
+          name: input.name || location.name,
+          genres: input.genres,
+          price: input.price,
+          parking: input.parking,
+        };
+    try {
+      await document.send(new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: config.contentTable,
+              Key: { PK: `LOCATION#${post.locationId}`, SK: `POST#${post.id}` },
+              UpdateExpression: 'SET summary = :summary, body = :body, photos = :photos, updatedAt = :updatedAt',
+              ConditionExpression: 'userId = :userId',
+              ExpressionAttributeValues: {
+                ':summary': post.summary,
+                ':body': post.body,
+                ':photos': post.photos,
+                ':updatedAt': post.updatedAt,
+                ':userId': userId,
+              },
+            },
+          },
+          ...(locked
+            ? []
+            : [
+                {
+                  Update: {
+                    TableName: config.contentTable,
+                    Key: locationKey(location.id),
+                    UpdateExpression: 'SET #name = :name, genre = :genre, price = :price, parking = :parking',
+                    ConditionExpression: 'attribute_exists(PK)',
+                    ExpressionAttributeNames: { '#name': 'name' },
+                    ExpressionAttributeValues: {
+                      ':name': nextLocation.name,
+                      ':genre': nextLocation.genres,
+                      ':price': nextLocation.price,
+                      ':parking': nextLocation.parking,
+                    },
+                  },
+                },
+              ]),
+        ],
+      }));
+    } catch (error) {
+      if (isCancelled(error)) {
+        throw new HttpError(404, '投稿が見つかりません');
+      }
+      throw error;
+    }
+    return { location: nextLocation, post };
   }
 
   async putWishlist(userId: string, locationId: string): Promise<{ locationId: string; savedAt: string }> {
@@ -315,6 +407,15 @@ function postItem(post: PostItem) {
     updatedAt: post.updatedAt,
     GSI2PK: `USER#${post.userId}`,
     GSI2SK: `POST#${post.createdAt}#${post.id}`,
+  };
+}
+
+function authorItem(locationId: string, userId: string, postId: string) {
+  return {
+    PK: `LOCATION#${locationId}`,
+    SK: `AUTHOR#${userId}`,
+    userId,
+    postId,
   };
 }
 

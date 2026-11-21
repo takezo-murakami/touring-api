@@ -40,6 +40,7 @@ const routes: Route[] = [
   { method: 'DELETE', pattern: /^\/locations\/([^/]+)\/wishlist$/, auth: 'required', handle: removeWishlist },
   { method: 'GET', pattern: /^\/users\/me\/wishlist$/, auth: 'required', handle: listWishlist },
   { method: 'POST', pattern: /^\/posts$/, auth: 'required', handle: createPost },
+  { method: 'PATCH', pattern: /^\/posts\/([^/]+)$/, auth: 'required', handle: updatePost },
   { method: 'POST', pattern: /^\/rides$/, auth: 'required', handle: createRide },
   { method: 'PATCH', pattern: /^\/rides\/([^/]+)$/, auth: 'required', handle: patchRide },
 ];
@@ -129,12 +130,33 @@ async function listWishlist(request: ApiRequest, store: AppStore): Promise<ApiRe
 
 async function createPost(request: ApiRequest, store: AppStore): Promise<ApiResult> {
   const input = parseCreatePost(request.body);
+  if (input.locationId) {
+    const posts = await store.listPosts(input.locationId);
+    if (posts.some((post) => post.userId === request.user!.id)) {
+      throw new HttpError(409, 'この場所には、すでにあなたの投稿があります');
+    }
+  }
   const created = await store.createPost(request.user!.id, input);
   return {
     status: 201,
     body: {
       location: publicLocation(created.location),
       post: publicPost(created.post),
+    },
+  };
+}
+
+async function updatePost(request: ApiRequest, store: AppStore, params: string[]): Promise<ApiResult> {
+  const input = parseCreatePost(request.body);
+  if (!input.locationId) {
+    throw new HttpError(400, 'locationId が必要です');
+  }
+  const updated = await store.updatePost(request.user!.id, params[0], input);
+  return {
+    status: 200,
+    body: {
+      location: publicLocation(updated.location),
+      post: publicPost(updated.post),
     },
   };
 }

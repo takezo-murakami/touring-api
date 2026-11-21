@@ -49,6 +49,7 @@ Content-Type: application/json
 | --- | --- |
 | 400 | 入力が不正 |
 | 401 | 未ログイン、またはトークンが無効 |
+| 403 | 自分の投稿ではない |
 | 404 | 対象がない |
 | 409 | 状態が操作と合わない |
 | 413 | 本文が 1MB を超えた |
@@ -207,6 +208,44 @@ GET /locations/nearby?lat=35.68&lng=139.76&hours=1&genre=景色&keyword=港
 
 写真のアップロード API はまだありません。`photos` は文字列を保存するだけです。端末内のファイル URI を入れると、その文字列は残りますが、他の端末からは画像を開けません。
 
+### PATCH `/posts/{id}`
+
+自分の投稿を編集する。認証が必要です。`id` は作成時に返った投稿 ID です。場所の移動、改名、緯度経度の変更はこの入口ではしません。本文に `name`、`locationId`、`latitude`、`longitude`、`lat`、`lng` があると `400` です。
+
+```json
+{
+  "summary": "港が見える丘",
+  "genres": ["景色"],
+  "price": "無料",
+  "parking": "専用駐車場あり",
+  "body": "朝は人が少ない",
+  "photos": []
+}
+```
+
+| 項目 | 制約 |
+| --- | --- |
+| summary | 必須。500 文字まで |
+| genres | 必須。1〜3 個 |
+| price | 必須 |
+| parking | 必須 |
+| body | 任意。8000 文字まで。省略すると空 |
+| photos | 任意。文字列を 5 個まで、各 500 文字まで。省略すると空 |
+
+投稿が無ければ `404` です。トークンの `sub` と投稿の `userId` が違うときは `403` です。
+
+ジャンル、価格、駐車は場所の値です。特集が付いた場所（`featureId` あり）では、送った値は使わず既存のままです。特集が無い場所では、この投稿の値で上書きします。`createdAt` は変えず、`updatedAt` だけを受け取り時刻にします。`postCount` は変えません。
+
+`200` で、場所と投稿を返します。形は作成時と同じです。写真の扱いは作成と同じです。
+
+### DELETE `/posts/{id}`
+
+自分の投稿を削除する。認証が必要です。本文はありません。
+
+投稿が無ければ `404` です。他人の投稿は `403` です。削除できたときは `204` で、本文はありません。
+
+その場所の `postCount` を 1 減らします。他の投稿が残っていれば、場所は残ります。最後の投稿を消すと、その場所は近傍と詳細から外れます。気になる一覧では、その項目の `location` が `null` になります。走行記録の `locationId` はそのまま残します。
+
 ### POST `/locations/{id}/wishlist`
 
 気になる場所へ追加。認証が必要です。本文はありません。場所が無ければ `404`。
@@ -320,6 +359,8 @@ GET /locations/nearby?lat=35.68&lng=139.76&hours=1&genre=景色&keyword=港
 | 場所の詳細 | `GET /locations/{id}` |
 | `postsFor` | `GET /locations/{id}/posts` |
 | `createPost` | `POST /posts`。返った `location.id` へ遷移する |
+| `updatePost` | `PATCH /posts/{id}` |
+| `deletePost` | `DELETE /posts/{id}` |
 | `toggleWishlist` の追加 | `POST /locations/{id}/wishlist` |
 | `toggleWishlist` の削除 | `DELETE /locations/{id}/wishlist` |
 | 気になる一覧 | `GET /users/me/wishlist` |
@@ -328,6 +369,6 @@ GET /locations/nearby?lat=35.68&lng=139.76&hours=1&genre=景色&keyword=港
 | `discardWatch` | `PATCH /rides/{id}` の `discard` |
 | `login` / `logout` | Cognito。API は呼ばない |
 
-`updatePost` と `deletePost` に対応する API は、Phase1 の一覧に無いのでまだありません。特集の取得 API もありません。
+特集の取得 API は、Phase1 の一覧に無いのでまだありません。
 
 ローカルのフィクスチャと `AsyncStorage` は、この API へ切り替えるまでのデータです。

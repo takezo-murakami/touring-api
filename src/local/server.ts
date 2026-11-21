@@ -32,6 +32,9 @@ const server = createServer(async (request, response) => {
     } satisfies ApiRequest, store);
     writeResult(response, result.status, result.body);
   } catch (error) {
+    if (!(error instanceof HttpError)) {
+      console.error(error);
+    }
     const status = error instanceof HttpError ? error.status : 500;
     const message = error instanceof HttpError ? error.message : 'サーバーエラー';
     writeResult(response, status, { message });

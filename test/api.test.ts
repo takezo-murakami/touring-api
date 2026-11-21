@@ -65,22 +65,6 @@ test('nearby returns the speed used to cut the radius', async () => {
   expect(body.locations[0].distanceKm).toEqual(expect.any(Number));
 });
 
-test('nearby tells the client which speed drew the radius', async () => {
-  const result = await handle({
-    method: 'GET',
-    path: '/locations/nearby',
-    query: new URLSearchParams({ lat: '35.68', lng: '139.76', hours: '1' }),
-    body: undefined,
-    user: null,
-  }, {
-    ...unusedStore(),
-    listCandidates: async () => [place('near', '丘', 35.681, 139.767, ['景色'])],
-    postsFor: async () => [],
-  });
-  expect(result.status).toBe(200);
-  expect(result.body).toMatchObject({ averageSpeedKmh: 30 });
-});
-
 test('missing hours is rejected before the store is called', async () => {
   await expect(handle({
     method: 'GET',
@@ -103,6 +87,89 @@ test('creating a post requires a login and a summary', async () => {
   expect(() => parseCreatePost({ summary: '  ', genres: ['景色'], price: '無料', parking: '専用駐車場あり' })).toThrow(HttpError);
   expect(parseNearby(new URLSearchParams({ lat: '35.0', lng: '139.0', hours: 'all' })).radiusKm).toBeNull();
 });
+
+test('the same user cannot add a second post to one place', async () => {
+  await expect(handle({
+    method: 'POST',
+    path: '/posts',
+    query: new URLSearchParams(),
+    body: {
+      locationId: 'place-1',
+      summary: 'もう一度',
+      genres: ['景色'],
+      price: '無料',
+      parking: '専用駐車場あり',
+    },
+    user: { id: 'user' },
+  }, {
+    ...unusedStore(),
+    listPosts: async () => [samplePost('post-1', 'place-1', 'user')],
+  })).rejects.toMatchObject({ status: 409 });
+});
+
+test('another user can still post at that place', async () => {
+  const result = await handle({
+    method: 'POST',
+    path: '/posts',
+    query: new URLSearchParams(),
+    body: {
+      locationId: 'place-1',
+      summary: '別の人の体験',
+      genres: ['食事'],
+      price: '無料',
+      parking: '専用駐車場あり',
+    },
+    user: { id: 'other' },
+  }, {
+    ...unusedStore(),
+    listPosts: async () => [samplePost('post-1', 'place-1', 'user')],
+    createPost: async () => ({
+      location: place('place-1', '港の丘', 35.69, 139.77, ['食事']),
+      post: samplePost('post-2', 'place-1', 'other'),
+    }),
+  });
+
+  expect(result.status).toBe(201);
+  expect((result.body as { post: PostItem }).post.userId).toBe('other');
+});
+
+test('editing a post updates that post', async () => {
+  const result = await handle({
+    method: 'PATCH',
+    path: '/posts/post-1',
+    query: new URLSearchParams(),
+    body: {
+      locationId: 'place-1',
+      summary: '書き直した',
+      genres: ['景色'],
+      price: '無料',
+      parking: '専用駐車場あり',
+    },
+    user: { id: 'user' },
+  }, {
+    ...unusedStore(),
+    updatePost: async () => ({
+      location: place('place-1', '港の丘', 35.69, 139.77, ['景色']),
+      post: { ...samplePost('post-1', 'place-1', 'user'), summary: '書き直した' },
+    }),
+  });
+
+  expect(result.status).toBe(200);
+  expect((result.body as { post: PostItem }).post.summary).toBe('書き直した');
+});
+
+function samplePost(id: string, locationId: string, userId: string): PostItem {
+  return {
+    id,
+    locationId,
+    userId,
+    summary: '丘から港が見える',
+    body: '',
+    photos: [],
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+}
 
 function place(id: string, name: string, latitude: number, longitude: number, genres: LocationItem['genres']): LocationItem {
   return {
@@ -127,6 +194,7 @@ function unusedStore(): AppStore {
     getLocation: fail,
     listPosts: fail,
     createPost: fail,
+    updatePost: fail,
     putWishlist: fail,
     deleteWishlist: fail,
     listWishlist: fail,
