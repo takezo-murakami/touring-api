@@ -1,5 +1,6 @@
 import { handle } from '../src/app';
 import { parseCreatePost, parseNearby, radiusKmFor } from '../src/domain';
+import { acceptedPhotos } from '../src/photos';
 import { HttpError } from '../src/errors';
 import { encodeGeohash, searchPrefixes } from '../src/geo';
 import { selectLocations } from '../src/select';
@@ -191,6 +192,43 @@ test('editing a post updates that post', async () => {
 
   expect(result.status).toBe(200);
   expect((result.body as { post: PostItem }).post.summary).toBe('書き直した');
+});
+
+test('photo upload requires a login', async () => {
+  await expect(handle({
+    method: 'POST',
+    path: '/photos',
+    query: new URLSearchParams(),
+    body: { contentType: 'image/jpeg' },
+    user: null,
+  }, unusedStore())).rejects.toMatchObject({ status: 401 });
+});
+
+test('creating a post rejects a photo that is not an uploaded key', async () => {
+  await expect(handle({
+    method: 'POST',
+    path: '/posts',
+    query: new URLSearchParams(),
+    body: {
+      summary: '丘から港が見える',
+      genres: ['景色'],
+      price: '無料',
+      parking: '専用駐車場あり',
+      latitude: 35,
+      longitude: 139,
+      photos: ['file:///tmp/a.jpg'],
+    },
+    user: { id: 'e7e4fa48-2041-7083-c45e-84302b2d0e25' },
+  }, unusedStore())).rejects.toMatchObject({ status: 400 });
+});
+
+test('a new post only accepts a photo key owned by the author', () => {
+  const userId = 'e7e4fa48-2041-7083-c45e-84302b2d0e25';
+  const key = `photos/${userId}/11111111-1111-1111-1111-111111111111.jpg`;
+  expect(acceptedPhotos(userId, [key])).toEqual([key]);
+  expect(() => acceptedPhotos(userId, ['file:///tmp/a.jpg'])).toThrow(HttpError);
+  expect(acceptedPhotos(userId, ['file:///tmp/a.jpg'], ['file:///tmp/a.jpg'])).toEqual(['file:///tmp/a.jpg']);
+  expect(() => acceptedPhotos('another-user', [key])).toThrow(HttpError);
 });
 
 function samplePost(id: string, locationId: string, userId: string): PostItem {

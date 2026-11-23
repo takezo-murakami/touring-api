@@ -15,6 +15,7 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 
 import { config } from './config.js';
+import { acceptedPhotos } from './photos.js';
 import type {
   CreatePostInput,
   Genre,
@@ -93,6 +94,7 @@ class DynamoStore implements AppStore {
   }
 
   async createPost(userId: string, input: CreatePostInput): Promise<{ location: LocationItem; post: PostItem }> {
+    acceptedPhotos(userId, input.photos);
     await ensureUser(userId);
     const now = new Date().toISOString();
     const postId = randomUUID();
@@ -199,6 +201,7 @@ class DynamoStore implements AppStore {
     if (!existing) {
       throw new HttpError(404, '投稿が見つかりません');
     }
+    acceptedPhotos(userId, input.photos, existing.photos);
     const now = new Date().toISOString();
     const post: PostItem = {
       ...existing,

@@ -156,6 +156,7 @@ GET /locations/nearby?lat=35.68&lng=139.76&hours=1&genre=景色&keyword=港
       "summary": "港が見える丘",
       "body": "朝は人が少ない",
       "photos": [],
+      "photoUrls": [],
       "photoCount": 0,
       "createdAt": "2026-11-16T21:56:38.985Z",
       "updatedAt": "2026-11-16T21:56:38.985Z"
@@ -163,6 +164,27 @@ GET /locations/nearby?lat=35.68&lng=139.76&hours=1&genre=景色&keyword=港
   ]
 }
 ```
+
+写真がある投稿では `photos` が保存した S3 の key、`photoUrls` が表示用の URL です。並び順は同じです。key でない古い値は、`photoUrls` にも同じ文字列が入ります。
+
+### POST `/photos`
+
+写真を置くための URL を発行する。認証が必要です。
+
+```json
+{ "contentType": "image/jpeg" }
+```
+
+`contentType` は `image/jpeg` だけです。それ以外は `400` です。`200`:
+
+```json
+{
+  "key": "photos/{userId}/{uuid}.jpg",
+  "uploadUrl": "https://..."
+}
+```
+
+`uploadUrl` へ JPEG の本体を `PUT` します。`Content-Type` は `image/jpeg` です。URL の有効期限は 5 分です。保存先は非公開の S3 で、投稿の `photos` には `key` を入れます。URL 自体は保存しません。
 
 ### POST `/posts`
 
@@ -194,7 +216,7 @@ GET /locations/nearby?lat=35.68&lng=139.76&hours=1&genre=景色&keyword=港
 | parking | 必須 |
 | name | 任意。80 文字まで。空なら `（名称未設定）` |
 | body | 任意。8000 文字まで |
-| photos | 任意。文字列を 5 個まで、各 500 文字まで |
+| photos | 任意。`POST /photos` で受け取った、自分の key を 5 個まで |
 | latitude, longitude | 新規の場所では必須 |
 
 `201`:
@@ -208,7 +230,7 @@ GET /locations/nearby?lat=35.68&lng=139.76&hours=1&genre=景色&keyword=港
 
 場所と投稿の形は、詳細取得と同じです。返った `location.id` を画面遷移に使います。
 
-写真のアップロード API はまだありません。`photos` は文字列を保存するだけです。端末内のファイル URI を入れると、その文字列は残りますが、他の端末からは画像を開けません。
+投稿の `photos` には key を保存します。応答の `photoUrls` は表示用の URL で、有効期限は 1 時間です。`photos` と並び順は同じです。key 以外の文字列は新規投稿では `400` です。
 
 ### PATCH `/posts/{id}`
 
@@ -232,13 +254,13 @@ GET /locations/nearby?lat=35.68&lng=139.76&hours=1&genre=景色&keyword=港
 | price | 必須 |
 | parking | 必須 |
 | body | 任意。8000 文字まで。省略すると空 |
-| photos | 任意。文字列を 5 個まで、各 500 文字まで。省略すると空 |
+| photos | 任意。新しい key、またはその投稿に既に入っている文字列を 5 個まで。省略すると空 |
 
 投稿が無ければ `404` です。トークンの `sub` と投稿の `userId` が違うときは `403` です。
 
 ジャンル、価格、駐車は場所の値です。特集が付いた場所（`featureId` あり）では、送った値は使わず既存のままです。特集が無い場所では、この投稿の値で上書きします。`createdAt` は変えず、`updatedAt` だけを受け取り時刻にします。`postCount` は変えません。
 
-`200` で、場所と投稿を返します。形は作成時と同じです。写真の扱いは作成と同じです。
+`200` で、場所と投稿を返します。形は作成時と同じです。その投稿に既に保存されている文字列（以前の端末内パスを含む）はそのまま残せます。表示は応答の `photoUrls` を使います。
 
 ### DELETE `/posts/{id}`
 
@@ -282,6 +304,7 @@ GET /locations/nearby?lat=35.68&lng=139.76&hours=1&genre=景色&keyword=港
         "summary": "港が見える丘",
         "body": "朝は人が少ない",
         "photos": [],
+        "photoUrls": [],
         "photoCount": 0,
         "createdAt": "2026-11-16T21:56:38.985Z",
         "updatedAt": "2026-11-16T21:56:38.985Z"

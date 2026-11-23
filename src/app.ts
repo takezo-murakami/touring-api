@@ -9,6 +9,7 @@ import {
   type PostItem,
 } from './domain.js';
 import { HttpError } from './errors.js';
+import { acceptedPhotos, createUpload, displayPhotoUrl } from './photos.js';
 import { selectLocations } from './select.js';
 import type { AppStore } from './store.js';
 
@@ -40,6 +41,7 @@ const routes: Route[] = [
   { method: 'DELETE', pattern: /^\/locations\/([^/]+)\/wishlist$/, auth: 'required', handle: removeWishlist },
   { method: 'GET', pattern: /^\/users\/me\/wishlist$/, auth: 'required', handle: listWishlist },
   { method: 'GET', pattern: /^\/users\/me\/posts$/, auth: 'required', handle: listMyPosts },
+  { method: 'POST', pattern: /^\/photos$/, auth: 'required', handle: createPhotoUpload },
   { method: 'POST', pattern: /^\/posts$/, auth: 'required', handle: createPost },
   { method: 'PATCH', pattern: /^\/posts\/([^/]+)$/, auth: 'required', handle: updatePost },
   { method: 'POST', pattern: /^\/rides$/, auth: 'required', handle: createRide },
@@ -102,7 +104,7 @@ async function locationPosts(_request: ApiRequest, store: AppStore, params: stri
     throw new HttpError(404, '場所が見つかりません');
   }
   const posts = await store.listPosts(location.id);
-  return { status: 200, body: { posts: posts.map(publicPost) } };
+  return { status: 200, body: { posts: await Promise.all(posts.map((post) => presentPost(post))) } };
 }
 
 async function addWishlist(request: ApiRequest, store: AppStore, params: string[]): Promise<ApiResult> {
@@ -120,10 +122,10 @@ async function listMyPosts(request: ApiRequest, store: AppStore): Promise<ApiRes
   return {
     status: 200,
     body: {
-      posts: entries.map((entry) => ({
-        post: publicPost(entry.post),
+      posts: await Promise.all(entries.map(async (entry) => ({
+        post: await presentPost(entry.post),
         location: entry.location ? publicLocation(entry.location) : null,
-      })),
+      }))),
     },
   };
 }
@@ -142,8 +144,17 @@ async function listWishlist(request: ApiRequest, store: AppStore): Promise<ApiRe
   };
 }
 
+async function createPhotoUpload(request: ApiRequest): Promise<ApiResult> {
+  const body = request.body;
+  const contentType = body && typeof body === 'object' && 'contentType' in body
+    ? (body as { contentType: unknown }).contentType
+    : undefined;
+  return { status: 200, body: await createUpload(request.user!.id, contentType) };
+}
+
 async function createPost(request: ApiRequest, store: AppStore): Promise<ApiResult> {
   const input = parseCreatePost(request.body);
+  acceptedPhotos(request.user!.id, input.photos);
   if (input.locationId) {
     const posts = await store.listPosts(input.locationId);
     if (posts.some((post) => post.userId === request.user!.id)) {
@@ -155,7 +166,7 @@ async function createPost(request: ApiRequest, store: AppStore): Promise<ApiResu
     status: 201,
     body: {
       location: publicLocation(created.location),
-      post: publicPost(created.post),
+      post: await presentPost(created.post),
     },
   };
 }
@@ -170,7 +181,7 @@ async function updatePost(request: ApiRequest, store: AppStore, params: string[]
     status: 200,
     body: {
       location: publicLocation(updated.location),
-      post: publicPost(updated.post),
+      post: await presentPost(updated.post),
     },
   };
 }
@@ -216,6 +227,14 @@ function publicPost(post: PostItem) {
     photoCount: post.photos.length,
     createdAt: post.createdAt,
     updatedAt: post.updatedAt,
+  };
+}
+
+async function presentPost(post: PostItem) {
+  const body = publicPost(post);
+  return {
+    ...body,
+    photoUrls: await Promise.all(body.photos.map((photo) => displayPhotoUrl(photo))),
   };
 }
 
