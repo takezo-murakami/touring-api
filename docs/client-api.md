@@ -33,6 +33,8 @@ Content-Type: application/json
 
 パスワードは 8 文字以上で、英大文字、英小文字、数字が必要です。記号は必須ではありません。
 
+Phase2 で、ログイン画面の「パスワードを忘れた場合」から再設定します。アプリは Cognito の `ForgotPassword` で確認コードを送り、`ConfirmForgotPassword` で新しいパスワードを確定します。API は呼びません。新しいパスワードの規則は登録時と同じです。確定したあとはログイン画面から入り直します。
+
 ヘッダが無い呼び出しは未ログインです。閲覧系はそれで通り、登録系は `401` です。ヘッダがあるのにトークンが無効なときも `401` です。
 
 ## 共通
@@ -265,6 +267,43 @@ GET /locations/nearby?lat=35.68&lng=139.76&hours=1&genre=景色&keyword=港
 
 気になる場所から外す。認証が必要です。`204` で本文はありません。元から無くても `204` です。
 
+### GET `/users/me/posts`
+
+ログイン中のユーザー自身の投稿。認証が必要です。新しい投稿が先です。どの端末から開いても、同じユーザーには同じ一覧が返ります。
+
+```json
+{
+  "posts": [
+    {
+      "post": {
+        "id": "83d87954-152b-47a6-9570-21c1fd83ff1e",
+        "locationId": "9737cde3-637a-4250-814a-4484efe8e5e5",
+        "userId": "cognito-sub",
+        "summary": "港が見える丘",
+        "body": "朝は人が少ない",
+        "photos": [],
+        "photoCount": 0,
+        "createdAt": "2026-11-16T21:56:38.985Z",
+        "updatedAt": "2026-11-16T21:56:38.985Z"
+      },
+      "location": {
+        "id": "9737cde3-637a-4250-814a-4484efe8e5e5",
+        "name": "動作確認の丘",
+        "latitude": 35.681,
+        "longitude": 139.767,
+        "genres": ["景色"],
+        "price": "無料",
+        "parking": "専用駐車場あり",
+        "postCount": 1,
+        "createdAt": "2026-11-16T21:56:38.985Z"
+      }
+    }
+  ]
+}
+```
+
+場所が消えている項目は `location: null` です。投稿の作成は `POST /posts`、編集は `PATCH /posts/{id}` です。この一覧は、その結果をユーザー単位で読む口です。
+
 ### GET `/users/me/wishlist`
 
 自分の気になる場所。認証が必要です。新しい保存が先です。
@@ -361,6 +400,7 @@ GET /locations/nearby?lat=35.68&lng=139.76&hours=1&genre=景色&keyword=港
 | `createPost` | `POST /posts`。返った `location.id` へ遷移する |
 | `updatePost` | `PATCH /posts/{id}` |
 | `deletePost` | `DELETE /posts/{id}` |
+| 自分の投稿一覧 | `GET /users/me/posts` |
 | `toggleWishlist` の追加 | `POST /locations/{id}/wishlist` |
 | `toggleWishlist` の削除 | `DELETE /locations/{id}/wishlist` |
 | 気になる一覧 | `GET /users/me/wishlist` |
@@ -368,7 +408,8 @@ GET /locations/nearby?lat=35.68&lng=139.76&hours=1&genre=景色&keyword=港
 | `markArrived` | `PATCH /rides/{id}` の `arrive` |
 | `discardWatch` | `PATCH /rides/{id}` の `discard` |
 | `login` / `logout` | Cognito。API は呼ばない |
+| パスワード再設定 | Phase2。Cognito の `ForgotPassword` と `ConfirmForgotPassword`。API は呼ばない |
 
 特集の取得 API は、Phase1 の一覧に無いのでまだありません。
 
-ローカルのフィクスチャと `AsyncStorage` は、この API へ切り替えるまでのデータです。
+スライダーの段と時速は端末に残します。自分の投稿一覧は `GET /users/me/posts` が正で、端末には残しません。

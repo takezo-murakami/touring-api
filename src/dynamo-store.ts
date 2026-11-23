@@ -78,6 +78,20 @@ class DynamoStore implements AppStore {
     return items.map(asPost).sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   }
 
+  async listMyPosts(userId: string): Promise<{ post: PostItem; location: LocationItem | null }[]> {
+    const items = await queryAll({
+      TableName: config.contentTable,
+      IndexName: 'GSI2',
+      KeyConditionExpression: 'GSI2PK = :pk AND begins_with(GSI2SK, :sk)',
+      ExpressionAttributeValues: { ':pk': `USER#${userId}`, ':sk': 'POST#' },
+    });
+    const posts = items
+      .map(asPost)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id));
+    const locations = await batchLocations(posts.map((post) => post.locationId));
+    return posts.map((post) => ({ post, location: locations.get(post.locationId) ?? null }));
+  }
+
   async createPost(userId: string, input: CreatePostInput): Promise<{ location: LocationItem; post: PostItem }> {
     await ensureUser(userId);
     const now = new Date().toISOString();

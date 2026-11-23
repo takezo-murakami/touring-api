@@ -133,6 +133,41 @@ test('another user can still post at that place', async () => {
   expect((result.body as { post: PostItem }).post.userId).toBe('other');
 });
 
+test('my posts require a login and come back newest first', async () => {
+  await expect(handle({
+    method: 'GET',
+    path: '/users/me/posts',
+    query: new URLSearchParams(),
+    body: undefined,
+    user: null,
+  }, unusedStore())).rejects.toMatchObject({ status: 401 });
+
+  const older = samplePost('post-1', 'place-1', 'user');
+  const newer = { ...samplePost('post-2', 'place-2', 'user'), createdAt: '2026-02-01T00:00:00.000Z' };
+  const result = await handle({
+    method: 'GET',
+    path: '/users/me/posts',
+    query: new URLSearchParams(),
+    body: undefined,
+    user: { id: 'user' },
+  }, {
+    ...unusedStore(),
+    listMyPosts: async (userId) => {
+      expect(userId).toBe('user');
+      return [
+        { post: newer, location: place('place-2', '新しい丘', 35.7, 139.8, ['景色']) },
+        { post: older, location: null },
+      ];
+    },
+  });
+
+  expect(result.status).toBe(200);
+  const posts = (result.body as { posts: Array<{ post: PostItem; location: { name: string } | null }> }).posts;
+  expect(posts.map((entry) => entry.post.id)).toEqual(['post-2', 'post-1']);
+  expect(posts[0].location?.name).toBe('新しい丘');
+  expect(posts[1].location).toBeNull();
+});
+
 test('editing a post updates that post', async () => {
   const result = await handle({
     method: 'PATCH',
@@ -193,6 +228,7 @@ function unusedStore(): AppStore {
     postsFor: fail,
     getLocation: fail,
     listPosts: fail,
+    listMyPosts: fail,
     createPost: fail,
     updatePost: fail,
     putWishlist: fail,

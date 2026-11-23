@@ -39,6 +39,7 @@ const routes: Route[] = [
   { method: 'POST', pattern: /^\/locations\/([^/]+)\/wishlist$/, auth: 'required', handle: addWishlist },
   { method: 'DELETE', pattern: /^\/locations\/([^/]+)\/wishlist$/, auth: 'required', handle: removeWishlist },
   { method: 'GET', pattern: /^\/users\/me\/wishlist$/, auth: 'required', handle: listWishlist },
+  { method: 'GET', pattern: /^\/users\/me\/posts$/, auth: 'required', handle: listMyPosts },
   { method: 'POST', pattern: /^\/posts$/, auth: 'required', handle: createPost },
   { method: 'PATCH', pattern: /^\/posts\/([^/]+)$/, auth: 'required', handle: updatePost },
   { method: 'POST', pattern: /^\/rides$/, auth: 'required', handle: createRide },
@@ -112,6 +113,19 @@ async function addWishlist(request: ApiRequest, store: AppStore, params: string[
 async function removeWishlist(request: ApiRequest, store: AppStore, params: string[]): Promise<ApiResult> {
   await store.deleteWishlist(request.user!.id, params[0]);
   return { status: 204 };
+}
+
+async function listMyPosts(request: ApiRequest, store: AppStore): Promise<ApiResult> {
+  const entries = await store.listMyPosts(request.user!.id);
+  return {
+    status: 200,
+    body: {
+      posts: entries.map((entry) => ({
+        post: publicPost(entry.post),
+        location: entry.location ? publicLocation(entry.location) : null,
+      })),
+    },
+  };
 }
 
 async function listWishlist(request: ApiRequest, store: AppStore): Promise<ApiResult> {

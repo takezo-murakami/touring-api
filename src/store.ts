@@ -7,11 +7,17 @@ export type WishlistEntry = {
   location: LocationItem | null;
 };
 
+export type MyPostEntry = {
+  post: PostItem;
+  location: LocationItem | null;
+};
+
 export interface AppStore {
   listCandidates(origin: LatLng, radiusKm: number | null): Promise<LocationItem[]>;
   postsFor(locationIds: string[]): Promise<PostItem[]>;
   getLocation(locationId: string): Promise<LocationItem | null>;
   listPosts(locationId: string): Promise<PostItem[]>;
+  listMyPosts(userId: string): Promise<MyPostEntry[]>;
   createPost(userId: string, input: CreatePostInput): Promise<{ location: LocationItem; post: PostItem }>;
   updatePost(userId: string, postId: string, input: CreatePostInput): Promise<{ location: LocationItem; post: PostItem }>;
   putWishlist(userId: string, locationId: string): Promise<{ locationId: string; savedAt: string }>;
