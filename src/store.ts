@@ -20,6 +20,7 @@ export interface AppStore {
   listMyPosts(userId: string): Promise<MyPostEntry[]>;
   createPost(userId: string, input: CreatePostInput): Promise<{ location: LocationItem; post: PostItem }>;
   updatePost(userId: string, postId: string, input: CreatePostInput): Promise<{ location: LocationItem; post: PostItem }>;
+  deletePost(userId: string, postId: string): Promise<string[]>;
   putWishlist(userId: string, locationId: string): Promise<{ locationId: string; savedAt: string }>;
   deleteWishlist(userId: string, locationId: string): Promise<void>;
   listWishlist(userId: string): Promise<WishlistEntry[]>;

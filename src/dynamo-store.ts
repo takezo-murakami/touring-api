@@ -268,6 +268,76 @@ class DynamoStore implements AppStore {
     return { location: nextLocation, post };
   }
 
+  async deletePost(userId: string, postId: string): Promise<string[]> {
+    const mine = (await this.listMyPosts(userId)).find((entry) => entry.post.id === postId);
+    if (!mine) {
+      throw new HttpError(404, '投稿が見つかりません');
+    }
+    const post = mine.post;
+    const remove = async (removeLocation: boolean) => {
+      await document.send(new TransactWriteCommand({
+        TransactItems: [
+          {
+            Delete: {
+              TableName: config.contentTable,
+              Key: { PK: `LOCATION#${post.locationId}`, SK: `POST#${post.id}` },
+              ConditionExpression: 'userId = :userId',
+              ExpressionAttributeValues: { ':userId': userId },
+            },
+          },
+          {
+            Delete: {
+              TableName: config.contentTable,
+              Key: { PK: `LOCATION#${post.locationId}`, SK: `AUTHOR#${userId}` },
+            },
+          },
+          removeLocation
+            ? {
+                Delete: {
+                  TableName: config.contentTable,
+                  Key: locationKey(post.locationId),
+                  ConditionExpression: 'attribute_exists(PK) AND postCount <= :one',
+                  ExpressionAttributeValues: { ':one': 1 },
+                },
+              }
+            : {
+                Update: {
+                  TableName: config.contentTable,
+                  Key: locationKey(post.locationId),
+                  UpdateExpression: 'ADD postCount :minus',
+                  ConditionExpression: 'attribute_exists(PK) AND postCount > :one',
+                  ExpressionAttributeValues: { ':minus': -1, ':one': 1 },
+                },
+              },
+        ],
+      }));
+    };
+    const lastPost = async () => {
+      const posts = await this.listPosts(post.locationId);
+      return posts.every((item) => item.id === post.id);
+    };
+    try {
+      await remove(await lastPost());
+    } catch (error) {
+      if (!isCancelled(error)) {
+        throw error;
+      }
+      const posts = await this.listPosts(post.locationId);
+      if (!posts.some((item) => item.id === post.id)) {
+        return post.photos;
+      }
+      try {
+        await remove(posts.every((item) => item.id === post.id));
+      } catch (retryError) {
+        if (isCancelled(retryError)) {
+          throw new HttpError(409, '投稿を削除できませんでした');
+        }
+        throw retryError;
+      }
+    }
+    return post.photos;
+  }
+
   async putWishlist(userId: string, locationId: string): Promise<{ locationId: string; savedAt: string }> {
     const location = await this.getLocation(locationId);
     if (!location) {

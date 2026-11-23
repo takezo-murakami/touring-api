@@ -9,7 +9,7 @@ import {
   type PostItem,
 } from './domain.js';
 import { HttpError } from './errors.js';
-import { acceptedPhotos, createUpload, displayPhotoUrl } from './photos.js';
+import { acceptedPhotos, createUpload, deleteStoredPhotos, displayPhotoUrl } from './photos.js';
 import { selectLocations } from './select.js';
 import type { AppStore } from './store.js';
 
@@ -44,6 +44,7 @@ const routes: Route[] = [
   { method: 'POST', pattern: /^\/photos$/, auth: 'required', handle: createPhotoUpload },
   { method: 'POST', pattern: /^\/posts$/, auth: 'required', handle: createPost },
   { method: 'PATCH', pattern: /^\/posts\/([^/]+)$/, auth: 'required', handle: updatePost },
+  { method: 'DELETE', pattern: /^\/posts\/([^/]+)$/, auth: 'required', handle: removePost },
   { method: 'POST', pattern: /^\/rides$/, auth: 'required', handle: createRide },
   { method: 'PATCH', pattern: /^\/rides\/([^/]+)$/, auth: 'required', handle: patchRide },
 ];
@@ -184,6 +185,12 @@ async function updatePost(request: ApiRequest, store: AppStore, params: string[]
       post: await presentPost(updated.post),
     },
   };
+}
+
+async function removePost(request: ApiRequest, store: AppStore, params: string[]): Promise<ApiResult> {
+  const photos = await store.deletePost(request.user!.id, params[0]);
+  await deleteStoredPhotos(request.user!.id, photos);
+  return { status: 204 };
 }
 
 async function createRide(request: ApiRequest, store: AppStore): Promise<ApiResult> {

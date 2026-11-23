@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 import { config } from './config.js';
@@ -39,6 +39,17 @@ export async function createUpload(userId: string, contentType: unknown) {
     { expiresIn: 300 },
   );
   return { key, uploadUrl };
+}
+
+export async function deleteStoredPhotos(userId: string, photos: string[]) {
+  const keys = photos.filter((photo) => isOwnedPhotoKey(userId, photo));
+  await Promise.all(keys.map(async (key) => {
+    try {
+      await s3.send(new DeleteObjectCommand({ Bucket: config.photosBucket, Key: key }));
+    } catch {
+      return;
+    }
+  }));
 }
 
 export async function displayPhotoUrl(value: string) {

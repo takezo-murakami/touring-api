@@ -194,6 +194,36 @@ test('editing a post updates that post', async () => {
   expect((result.body as { post: PostItem }).post.summary).toBe('書き直した');
 });
 
+test('deleting a post requires a login and removes the author post', async () => {
+  await expect(handle({
+    method: 'DELETE',
+    path: '/posts/post-1',
+    query: new URLSearchParams(),
+    body: undefined,
+    user: null,
+  }, unusedStore())).rejects.toMatchObject({ status: 401 });
+
+  const deleted: string[] = [];
+  const result = await handle({
+    method: 'DELETE',
+    path: '/posts/post-1',
+    query: new URLSearchParams(),
+    body: undefined,
+    user: { id: 'user' },
+  }, {
+    ...unusedStore(),
+    deletePost: async (userId, postId) => {
+      expect(userId).toBe('user');
+      deleted.push(postId);
+      return [];
+    },
+  });
+
+  expect(result.status).toBe(204);
+  expect(result.body).toBeUndefined();
+  expect(deleted).toEqual(['post-1']);
+});
+
 test('photo upload requires a login', async () => {
   await expect(handle({
     method: 'POST',
@@ -269,6 +299,7 @@ function unusedStore(): AppStore {
     listMyPosts: fail,
     createPost: fail,
     updatePost: fail,
+    deletePost: fail,
     putWishlist: fail,
     deleteWishlist: fail,
     listWishlist: fail,
