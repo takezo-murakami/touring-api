@@ -82,6 +82,46 @@ test('sign-up is email and password, open to anyone', () => {
   });
 });
 
+test('http api sends every route to the lambda', () => {
+  const template = synthesize();
+
+  template.hasResourceProperties('AWS::Lambda::Function', {
+    Runtime: 'nodejs22.x',
+    Timeout: 15,
+    MemorySize: 512,
+    Environment: {
+      Variables: Match.objectLike({
+        TOURING_APP_TABLE: Match.anyValue(),
+        RIDE_HISTORY_TABLE: Match.anyValue(),
+        COGNITO_USER_POOL_ID: Match.anyValue(),
+        COGNITO_CLIENT_ID: Match.anyValue(),
+        TOURING_PHOTOS_BUCKET: Match.anyValue(),
+      }),
+    },
+  });
+  template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
+    Name: 'touring-api-dev',
+    ProtocolType: 'HTTP',
+    CorsConfiguration: Match.objectLike({
+      AllowOrigins: ['*'],
+      AllowHeaders: Match.arrayWith(['authorization', 'content-type']),
+    }),
+  });
+  template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+    RouteKey: '$default',
+  });
+  template.hasResourceProperties('AWS::IAM::Policy', {
+    PolicyDocument: {
+      Statement: Match.arrayWith([
+        Match.objectLike({
+          Action: 'dynamodb:TransactWriteItems',
+          Effect: 'Allow',
+        }),
+      ]),
+    },
+  });
+});
+
 test('photo bucket is private', () => {
   const template = synthesize();
 

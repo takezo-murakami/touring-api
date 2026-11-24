@@ -1,6 +1,12 @@
+import * as path from 'node:path';
 import * as cdk from 'aws-cdk-lib/core';
+import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
+import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
 
@@ -102,11 +108,53 @@ export class TouringApiStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
+    const apiFunction = new nodejs.NodejsFunction(this, 'ApiFunction', {
+      entry: path.join(__dirname, '../src/lambda.ts'),
+      handler: 'handler',
+      runtime: lambda.Runtime.NODEJS_22_X,
+      timeout: cdk.Duration.seconds(15),
+      memorySize: 512,
+      environment: {
+        TOURING_APP_TABLE: contentTable.tableName,
+        RIDE_HISTORY_TABLE: rideHistoryTable.tableName,
+        COGNITO_USER_POOL_ID: userPool.userPoolId,
+        COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
+        TOURING_PHOTOS_BUCKET: photosBucket.bucketName,
+      },
+      bundling: {
+        externalModules: [],
+      },
+    });
+    contentTable.grantReadWriteData(apiFunction);
+    rideHistoryTable.grantReadWriteData(apiFunction);
+    apiFunction.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['dynamodb:TransactWriteItems'],
+      resources: [contentTable.tableArn, `${contentTable.tableArn}/index/*`],
+    }));
+    photosBucket.grantReadWrite(apiFunction);
+
+    const httpApi = new apigwv2.HttpApi(this, 'HttpApi', {
+      apiName: `touring-api-${stage}`,
+      defaultIntegration: new HttpLambdaIntegration('ApiIntegration', apiFunction),
+      corsPreflight: {
+        allowHeaders: ['authorization', 'content-type'],
+        allowMethods: [
+          apigwv2.CorsHttpMethod.GET,
+          apigwv2.CorsHttpMethod.POST,
+          apigwv2.CorsHttpMethod.PATCH,
+          apigwv2.CorsHttpMethod.DELETE,
+          apigwv2.CorsHttpMethod.OPTIONS,
+        ],
+        allowOrigins: ['*'],
+      },
+    });
+
     new cdk.CfnOutput(this, 'UserPoolId', { value: userPool.userPoolId });
     new cdk.CfnOutput(this, 'UserPoolClientId', { value: userPoolClient.userPoolClientId });
     new cdk.CfnOutput(this, 'TouringAppTableName', { value: contentTable.tableName });
     new cdk.CfnOutput(this, 'RideHistoryTableName', { value: rideHistoryTable.tableName });
     new cdk.CfnOutput(this, 'PhotosBucketName', { value: photosBucket.bucketName });
+    new cdk.CfnOutput(this, 'ApiUrl', { value: httpApi.apiEndpoint });
   }
 }
 
