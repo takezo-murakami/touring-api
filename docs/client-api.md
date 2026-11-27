@@ -1,6 +1,6 @@
 # クライアント向け API
 
-Phase1 のモバイルアプリがクラウドへ接続するための契約です。場所の取得、投稿、気になる場所、到着記録はここを呼びます。登録とログインは API ではなく Cognito に直接話します。
+Phase1 のモバイルアプリがクラウドへ接続するための契約です。場所の取得、投稿、気になる場所、到着記録はここを呼びます。メールアドレスの登録とログインは API ではなく Cognito に直接話します。Instagram ログインだけは、この API が Meta と Cognito の間を取り次ぎます。
 
 API Gateway と Lambda にはまだ載せていません。開発中は、このリポジトリで `npm run dev` したプロセスが API です。
 
@@ -36,6 +36,60 @@ Content-Type: application/json
 Phase2 で、ログイン画面の「パスワードを忘れた場合」から再設定します。アプリは Cognito の `ForgotPassword` で確認コードを送り、`ConfirmForgotPassword` で新しいパスワードを確定します。API は呼びません。新しいパスワードの規則は登録時と同じです。確定したあとはログイン画面から入り直します。
 
 ヘッダが無い呼び出しは未ログインです。閲覧系はそれで通り、登録系は `401` です。ヘッダがあるのにトークンが無効なときも `401` です。
+
+## Instagram ログイン
+
+Instagram の認可は Meta の Unified login です。アプリシークレットは API の環境変数にだけ置き、アプリには入れません。ローカルでは `touring-api/.env` に書きます。このファイルは Git に入れません。`npm run dev` が起動時に読みます。
+
+| 変数 | 意味 |
+| --- | --- |
+| `META_APP_ID` | アプリ設定 → ベーシックのアプリ ID |
+| `META_APP_SECRET` | 同じ画面のアプリシークレット |
+| `META_CONFIG_ID` | Unified login の設定 ID |
+| `INSTAGRAM_REDIRECT_URI` | `https://<公開されたAPI>/auth/instagram/callback` |
+| `APP_LOGIN_REDIRECT` | 省略時は `touringapp://oauth/instagram` |
+
+`INSTAGRAM_REDIRECT_URI` は Meta のリダイレクト URL と、1 文字まで同じにします。`http://` では動きません。開発中の API が LAN の HTTP だけのときは、そのプロセスへ届く HTTPS の入口を別に用意します。
+
+未設定のときは次の 3 つが `503` です。場所や投稿の API はそのまま動きます。
+
+### GET `/auth/instagram/start`
+
+ログイン画面が開く URL を返します。認証ヘッダは不要です。
+
+```json
+{ "url": "https://www.facebook.com/dialog/oauth?..." }
+```
+
+### GET `/auth/instagram/callback`
+
+Meta がブラウザをここへ戻します。成功すると `302` でアプリへ戻します。
+
+```text
+touringapp://oauth/instagram?ticket=<一度だけのチケット>
+```
+
+失敗時の `error` は `denied`、`expired`、`no_account`、`failed` のいずれかです。
+
+### POST `/auth/instagram/session`
+
+```json
+{ "ticket": "<チケット>" }
+```
+
+```json
+{
+  "idToken": "<Cognito の ID トークン>",
+  "accessToken": "<Cognito のアクセストークン>",
+  "refreshToken": "<Cognito のリフレッシュトークン>",
+  "email": "17841400000000001@ig.touring.app",
+  "instagram": { "id": "17841400000000001", "username": "rider" }
+}
+```
+
+チケットは 2 分で失効し、一度使うと消えます。返る ID トークンは、メールログインと同じく `Authorization: Bearer` に使います。
+
+Instagram はメールアドレスを返さないため、Cognito のユーザー名は `<InstagramのID>@ig.touring.app` です。同じ Instagram アカウントは同じ Cognito ユーザーに戻ります。
 
 ## 共通
 

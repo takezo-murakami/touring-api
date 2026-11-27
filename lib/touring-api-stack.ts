@@ -120,6 +120,11 @@ export class TouringApiStack extends cdk.Stack {
         COGNITO_USER_POOL_ID: userPool.userPoolId,
         COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
         TOURING_PHOTOS_BUCKET: photosBucket.bucketName,
+        META_APP_ID: process.env.META_APP_ID ?? '',
+        META_APP_SECRET: process.env.META_APP_SECRET ?? '',
+        META_CONFIG_ID: process.env.META_CONFIG_ID ?? '',
+        INSTAGRAM_REDIRECT_URI: process.env.INSTAGRAM_REDIRECT_URI ?? '',
+        APP_LOGIN_REDIRECT: process.env.APP_LOGIN_REDIRECT ?? 'touringapp://oauth/instagram',
       },
       bundling: {
         externalModules: [],
@@ -132,6 +137,12 @@ export class TouringApiStack extends cdk.Stack {
       resources: [contentTable.tableArn, `${contentTable.tableArn}/index/*`],
     }));
     photosBucket.grantReadWrite(apiFunction);
+    userPool.grant(
+      apiFunction,
+      'cognito-idp:AdminGetUser',
+      'cognito-idp:AdminCreateUser',
+      'cognito-idp:AdminSetUserPassword',
+    );
 
     const httpApi = new apigwv2.HttpApi(this, 'HttpApi', {
       apiName: `touring-api-${stage}`,

@@ -5,6 +5,11 @@ import { authenticate } from '../auth.js';
 import { config } from '../config.js';
 import { createDynamoStore } from '../dynamo-store.js';
 import { HttpError } from '../errors.js';
+import { liveInstagramDeps } from '../instagram.js';
+import { instagramHttp, type HttpResult } from '../instagram-login.js';
+import { loadLocalEnv } from './env.js';
+
+loadLocalEnv();
 
 const port = Number(process.env.PORT ?? 3000);
 const store = createDynamoStore();
@@ -22,12 +27,23 @@ const server = createServer(async (request, response) => {
       await writeHealth(response);
       return;
     }
+    const body = await readBody(request);
+    const instagram = await instagramHttp({
+      method: request.method ?? 'GET',
+      path: url.pathname,
+      query: url.searchParams,
+      body,
+    }, liveInstagramDeps());
+    if (instagram) {
+      writeHttp(response, instagram);
+      return;
+    }
     const user = await authenticate(request.headers.authorization);
     const result = await handle({
       method: request.method ?? 'GET',
       path: url.pathname,
       query: url.searchParams,
-      body: await readBody(request),
+      body,
       user,
     } satisfies ApiRequest, store);
     writeResult(response, result.status, result.body);
@@ -75,6 +91,15 @@ async function readBody(request: IncomingMessage): Promise<unknown> {
   } catch {
     throw new HttpError(400, 'JSON として読めません');
   }
+}
+
+function writeHttp(response: ServerResponse, result: HttpResult) {
+  if (result.redirect) {
+    response.writeHead(result.status, { Location: result.redirect });
+    response.end();
+    return;
+  }
+  writeResult(response, result.status, result.body);
 }
 
 function writeResult(response: ServerResponse, status: number, body: unknown) {

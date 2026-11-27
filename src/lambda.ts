@@ -5,6 +5,8 @@ import { authenticate } from './auth.js';
 import { config } from './config.js';
 import { createDynamoStore } from './dynamo-store.js';
 import { HttpError } from './errors.js';
+import { liveInstagramDeps } from './instagram.js';
+import { instagramHttp, type HttpResult } from './instagram-login.js';
 
 const store = createDynamoStore();
 
@@ -19,6 +21,7 @@ type HttpApiEvent = {
 
 type HttpApiResult = {
   statusCode: number;
+  headers?: Record<string, string>;
   body?: string;
 };
 
@@ -29,12 +32,18 @@ export async function handler(event: HttpApiEvent): Promise<HttpApiResult> {
     if (method === 'GET' && path === '/health') {
       return json(200, await health());
     }
+    const query = new URLSearchParams(event.rawQueryString ?? '');
+    const body = readBody(event);
+    const instagram = await instagramHttp({ method, path, query, body }, liveInstagramDeps());
+    if (instagram) {
+      return respond(instagram);
+    }
     const user = await authenticate(header(event.headers, 'authorization'));
     const result = await handle({
       method,
       path,
-      query: new URLSearchParams(event.rawQueryString ?? ''),
-      body: readBody(event),
+      query,
+      body,
       user,
     } satisfies ApiRequest, store);
     return json(result.status, result.body);
@@ -84,6 +93,13 @@ function header(headers: Record<string, string | undefined> | undefined, name: s
     }
   }
   return undefined;
+}
+
+function respond(result: HttpResult): HttpApiResult {
+  if (result.redirect) {
+    return { statusCode: result.status, headers: { location: result.redirect } };
+  }
+  return json(result.status, result.body);
 }
 
 function json(status: number, body: unknown): HttpApiResult {

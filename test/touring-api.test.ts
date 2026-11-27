@@ -96,6 +96,11 @@ test('http api sends every route to the lambda', () => {
         COGNITO_USER_POOL_ID: Match.anyValue(),
         COGNITO_CLIENT_ID: Match.anyValue(),
         TOURING_PHOTOS_BUCKET: Match.anyValue(),
+        META_APP_ID: Match.anyValue(),
+        META_APP_SECRET: Match.anyValue(),
+        META_CONFIG_ID: Match.anyValue(),
+        INSTAGRAM_REDIRECT_URI: Match.anyValue(),
+        APP_LOGIN_REDIRECT: 'touringapp://oauth/instagram',
       }),
     },
   });
@@ -115,6 +120,14 @@ test('http api sends every route to the lambda', () => {
       Statement: Match.arrayWith([
         Match.objectLike({
           Action: 'dynamodb:TransactWriteItems',
+          Effect: 'Allow',
+        }),
+        Match.objectLike({
+          Action: Match.arrayWith([
+            'cognito-idp:AdminGetUser',
+            'cognito-idp:AdminCreateUser',
+            'cognito-idp:AdminSetUserPassword',
+          ]),
           Effect: 'Allow',
         }),
       ]),
