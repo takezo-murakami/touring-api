@@ -83,11 +83,11 @@ touringapp://oauth/instagram?ticket=<一度だけのチケット>
   "accessToken": "<Cognito のアクセストークン>",
   "refreshToken": "<Cognito のリフレッシュトークン>",
   "email": "17841400000000001@ig.touring.app",
-  "instagram": { "id": "17841400000000001", "username": "rider" }
+  "instagram": { "id": "17841400000000001", "username": "rider", "pictureUrl": "https://cdn.example/rider.jpg" }
 }
 ```
 
-チケットは 2 分で失効し、一度使うと消えます。返る ID トークンは、メールログインと同じく `Authorization: Bearer` に使います。
+チケットは 2 分で失効し、一度使うと消えます。返る ID トークンは、メールログインと同じく `Authorization: Bearer` に使います。`pictureUrl` はプロフィール画像です。Instagram が返さないときは、この項目はありません。
 
 Instagram はメールアドレスを返さないため、Cognito のユーザー名は `<InstagramのID>@ig.touring.app` です。同じ Instagram アカウントは同じ Cognito ユーザーに戻ります。
 

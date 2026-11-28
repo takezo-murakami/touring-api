@@ -50,8 +50,16 @@ export async function exchangeInstagramCode(code: string): Promise<string> {
 }
 
 export async function fetchInstagramAccounts(accessToken: string): Promise<InstagramAccount[]> {
+  try {
+    return await readInstagramAccounts(accessToken, 'id,username,profile_picture_url');
+  } catch {
+    return readInstagramAccounts(accessToken, 'id,username');
+  }
+}
+
+async function readInstagramAccounts(accessToken: string, fields: string): Promise<InstagramAccount[]> {
   const url = new URL(`${GRAPH}/me/assigned_instagram_accounts`);
-  url.searchParams.set('fields', 'id,username');
+  url.searchParams.set('fields', fields);
   url.searchParams.set('access_token', accessToken);
   const payload = await readGraph(url);
   if (!Array.isArray(payload.data)) {
@@ -61,11 +69,19 @@ export async function fetchInstagramAccounts(accessToken: string): Promise<Insta
     if (!item || typeof item !== 'object') {
       return [];
     }
-    const record = item as { id?: unknown; username?: unknown };
+    const record = item as { id?: unknown; username?: unknown; profile_picture_url?: unknown };
     const id = typeof record.id === 'string' ? record.id : '';
     const username = typeof record.username === 'string' ? record.username : '';
-    return id ? [{ id, username }] : [];
+    const profilePictureUrl = pictureUrl(record.profile_picture_url);
+    return id ? [{ id, username, ...(profilePictureUrl ? { profilePictureUrl } : {}) }] : [];
   });
+}
+
+function pictureUrl(value: unknown) {
+  if (typeof value !== 'string' || !value.startsWith('https://') || value.length > 2048) {
+    return undefined;
+  }
+  return value;
 }
 
 export async function issueCognitoSession(account: InstagramAccount): Promise<IssuedSession> {
@@ -97,6 +113,7 @@ export async function issueCognitoSession(account: InstagramAccount): Promise<Is
     email,
     instagramId: account.id,
     instagramUsername: account.username,
+    ...(account.profilePictureUrl ? { instagramPictureUrl: account.profilePictureUrl } : {}),
   };
 }
 

@@ -25,6 +25,7 @@ export async function saveLoginTicket(session: IssuedSession): Promise<string> {
       email: session.email,
       instagramId: session.instagramId,
       instagramUsername: session.instagramUsername,
+      instagramPictureUrl: session.instagramPictureUrl,
     },
   }));
   return id;

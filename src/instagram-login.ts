@@ -19,6 +19,7 @@ export type InstagramSettings = {
 export type InstagramAccount = {
   id: string;
   username: string;
+  profilePictureUrl?: string;
 };
 
 export type IssuedSession = {
@@ -28,6 +29,7 @@ export type IssuedSession = {
   email: string;
   instagramId: string;
   instagramUsername: string;
+  instagramPictureUrl?: string;
 };
 
 export type InstagramDeps = {
@@ -122,7 +124,11 @@ export async function instagramHttp(
         accessToken: session.accessToken,
         refreshToken: session.refreshToken,
         email: session.email,
-        instagram: { id: session.instagramId, username: session.instagramUsername },
+        instagram: {
+          id: session.instagramId,
+          username: session.instagramUsername,
+          ...(session.instagramPictureUrl ? { pictureUrl: session.instagramPictureUrl } : {}),
+        },
       },
     };
   }
@@ -150,7 +156,15 @@ export function sessionFromItem(item: Record<string, unknown> | undefined, now =
     email: item.email,
     instagramId: item.instagramId,
     instagramUsername: item.instagramUsername,
+    ...pictureFromItem(item.instagramPictureUrl),
   };
+}
+
+function pictureFromItem(value: unknown): { instagramPictureUrl: string } | undefined {
+  if (typeof value !== 'string' || !value.startsWith('https://') || value.length > 2048) {
+    return undefined;
+  }
+  return { instagramPictureUrl: value };
 }
 
 async function finishLogin(settings: InstagramSettings, query: URLSearchParams, deps: InstagramDeps): Promise<string> {
@@ -184,6 +198,7 @@ async function finishLogin(settings: InstagramSettings, query: URLSearchParams, 
   const session = await deps.issue({
     id: account.id,
     username: /^[A-Za-z0-9._]{1,30}$/.test(account.username) ? account.username : account.id,
+    ...(account.profilePictureUrl ? { profilePictureUrl: account.profilePictureUrl } : {}),
   });
   const ticket = await deps.saveTicket(session);
   return appUrl(settings.appRedirect, { ticket });

@@ -76,7 +76,11 @@ test('a fresh login code becomes a one-time app ticket', async () => {
     idToken: 'id-token',
     refreshToken: 'refresh-token',
     email: '17841400000000001@ig.touring.app',
-    instagram: { id: '17841400000000001', username: 'rider' },
+    instagram: {
+      id: '17841400000000001',
+      username: 'rider',
+      pictureUrl: 'https://cdn.example/rider.jpg',
+    },
   });
   await expect(instagramHttp({
     method: 'POST',
@@ -152,13 +156,22 @@ test('an expired stored ticket is empty', () => {
   };
   expect(sessionFromItem({ ...session, expiresAt: now }, now)).toBeNull();
   expect(sessionFromItem({ ...session, expiresAt: now + 1 }, now)?.email).toBe(session.email);
+  expect(sessionFromItem({
+    ...session,
+    instagramPictureUrl: 'https://cdn.example/rider.jpg',
+    expiresAt: now + 1,
+  }, now)?.instagramPictureUrl).toBe('https://cdn.example/rider.jpg');
 });
 
 function fakeDeps(): InstagramDeps & { exchange: jest.Mock; accounts: jest.Mock } {
   const stored = new Map<string, IssuedSession>();
   let sequence = 0;
   const exchange = jest.fn(async () => 'meta-token');
-  const accounts = jest.fn(async () => [{ id: '17841400000000001', username: 'rider' }]);
+  const accounts = jest.fn(async () => [{
+    id: '17841400000000001',
+    username: 'rider',
+    profilePictureUrl: 'https://cdn.example/rider.jpg',
+  }]);
   return {
     settings,
     exchange,
@@ -170,6 +183,7 @@ function fakeDeps(): InstagramDeps & { exchange: jest.Mock; accounts: jest.Mock 
       email: `${account.id}@ig.touring.app`,
       instagramId: account.id,
       instagramUsername: account.username,
+      ...(account.profilePictureUrl ? { instagramPictureUrl: account.profilePictureUrl } : {}),
     }),
     saveTicket: async (session) => {
       sequence += 1;
